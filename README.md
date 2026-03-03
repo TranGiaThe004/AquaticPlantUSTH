@@ -1,132 +1,315 @@
-4.1. Vị trí & naming
+Dưới đây là **README.md** mẫu (viết kiểu “giáo viên clone về là chạy được”), có đủ phần: **cài XAMPP 8.2.12**, **đặt project vào htdocs**, **setup DB bằng phpMyAdmin (import SQL) hoặc chạy migrations**, và **cách chạy cả Laravel + CLIP service**.
 
-    Tất cả API controller đặt trong: App\Http\Controllers\Api\...
+Bạn copy nguyên khối này vào file `README.md` ở root dự án là được.
 
-    Tên controller:
+---
 
-    TankApiController, WaterLogApiController, QuestionApiController, …
+````md
+# Aquatic Plant Advisor (APA)
 
-    Admin: App\Http\Controllers\Api\Admin\UserManagementController, …
+Web app hỗ trợ người chơi thủy sinh: quản lý bể (tanks), theo dõi thông số nước (water logs), thư viện cây (plant library), Q&A, community, và nhận diện cây bằng CLIP service.
 
-    Route API: nằm trong routes/api.php.
+---
 
-    Dùng Route::prefix('tanks'), Route::prefix('qa'), … để nhóm.
+## 1) Yêu cầu môi trường
 
-4.2. Kế thừa & response JSON
+### Phần Laravel (Web)
+- Windows
+- **XAMPP 8.2.12** (Apache + MySQL + PHP 8.2)
+- Composer
 
-    Tất cả API controller phải:
+> Gợi ý: mở XAMPP Control Panel và bật **Apache** + **MySQL**.
 
-    use App\Http\Controllers\Api\BaseApiController;
+### Phần CLIP service (Python)
+- Python 3.10+ (khuyến nghị 3.10/3.11)
+- pip
+- (khuyến nghị) tạo venv
 
-    class TankApiController extends BaseApiController
-    {
-        // ...
-    }
+---
 
+## 2) Lấy source code
 
-    Response chuẩn:
+### Cách A: Git clone
+Mở terminal và chạy:
 
-    Success:
+```bash
+cd C:\xampp\htdocs
+git clone <YOUR_GITHUB_REPO_URL> aquatic_plant_advisor
+````
 
-    {
-    "success": true,
-    "data": { ... },
-    "message": "Optional message"
-    }
+### Cách B: Giải nén file dự án
 
+Giải nén project vào:
 
-    Error chung:
+```text
+C:\xampp\htdocs\aquatic_plant_advisor
+```
 
-    {
-    "success": false,
-    "message": "Error message"
-    }
+> Sau khi xong, cấu trúc nên kiểu:
 
+```text
+C:\xampp\htdocs\aquatic_plant_advisor\
+  app\
+  public\
+  routes\
+  ...
+```
 
-    Validation error (để mặc định của Laravel hoặc chuẩn hóa sau).
+---
 
-    Trong controller:
+## 3) Setup Database (MySQL + phpMyAdmin)
 
-    return $this->success($tank, 'Tank created successfully.');
-    // hoặc
-    return $this->error('Tank not found', 404);
+### 3.1 Tạo database
 
-4.3. Auth + Policies
+Mở phpMyAdmin:
 
-    Mỗi API phải gắn middleware phù hợp:
+```text
+http://127.0.0.1/phpmyadmin
+```
 
-    Đọc data cá nhân: auth:web, active_user.
+Tạo database:
 
-    Admin: thêm admin.
+* Name: `aquatic_plant_advisor`
+* Collation: `utf8mb4_unicode_ci`
 
-    Mọi thao tác update / delete resource phải dùng authorize() + Policy:
+---
 
-    public function update(Request $request, Tank $tank)
-    {
-        // Chỉ owner tank hoặc admin mới được update
-        $this->authorize('update', $tank);
+### 3.2 Cách 1 (Khuyến nghị cho demo nhanh): Import SQL trực tiếp trong phpMyAdmin
 
-        $tank->update($request->validated());
+Nếu dự án có file SQL dump (ví dụ: `database/aquatic_plant_advisor.sql` hoặc `schema.sql` + `seed.sql`):
 
-        return $this->success($tank, 'Tank updated');
-    }
+1. Vào phpMyAdmin → chọn database `aquatic_plant_advisor`
+2. Tab **Import**
+3. Chọn file `.sql` trong dự án
+4. Bấm **Go**
 
-    public function destroy(Tank $tank)
-    {
-        $this->authorize('delete', $tank);
+> Sau khi import xong: refresh, sẽ thấy các tables (users, plants, tanks, water_logs, questions, answers, posts, comments, …)
 
-        $tank->delete();
+---
 
-        return $this->success(null, 'Tank deleted');
-    }
+### 3.3 Cách 2: Chạy migrations bằng Laravel
 
+Nếu bạn muốn tạo tables bằng migrations:
 
-    Quy tắc chung:
+1. Đảm bảo database `aquatic_plant_advisor` đã tạo
+2. Chạy lệnh:
 
-    Comment: chỉ user comment đó + admin được delete / update.
+```bash
+cd C:\xampp\htdocs\aquatic_plant_advisor
+php artisan migrate
+```
 
-    Tank: chỉ owner + admin được sửa/xóa.
+Nếu dự án có seed:
 
-    Post: chỉ author + admin.
+```bash
+php artisan db:seed
+# hoặc
+php artisan migrate --seed
+```
 
-    Question / Answer: dùng Policy tương ứng (chỉ đúng người & admin).
+---
 
-4.4. HTTP method & URL
+## 4) Setup Laravel (.env + composer)
 
-    GET: lấy dữ liệu
+### 4.1 Tạo file .env
 
-    POST: tạo mới
+Trong thư mục project Laravel:
 
-    PUT/PATCH: update
+```bash
+cd C:\xampp\htdocs\aquatic_plant_advisor
+copy .env.example .env
+```
 
-    DELETE: xoá
+Mở `.env` và chỉnh DB:
 
-    Ví dụ module Tanks:
+```env
+APP_NAME="Aquatic Plant Advisor"
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://127.0.0.1:8000
 
-    GET /api/tanks – list tank của user hiện tại.
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=aquatic_plant_advisor
+DB_USERNAME=root
+DB_PASSWORD=
+```
 
-    POST /api/tanks – tạo tank mới.
+> Với XAMPP mặc định: MySQL user `root`, password rỗng.
 
-    GET /api/tanks/{tank} – xem chi tiết.
+---
 
-    PUT/PATCH /api/tanks/{tank} – update tank.
+### 4.2 Cài dependency + generate key
 
-    DELETE /api/tanks/{tank} – xoá tank.
+```bash
+composer install
+php artisan key:generate
+```
 
-    Tương tự cho:
+Nếu dự án có dùng storage (upload ảnh, …):
 
-    Comments: /api/posts/{post}/comments, /api/comments/{comment}…
+```bash
+php artisan storage:link
+```
 
-    Water logs: /api/tanks/{tank}/water-logs.
+---
 
-4.5. Quy ước naming trong code
+## 5) Chạy Laravel (Web)
 
-    Request class: StoreTankRequest, UpdateTankRequest, …
+### Cách 1: Chạy bằng artisan serve (đơn giản nhất)
 
-    Model: số ít (Tank, WaterLog, PlantLog, …).
+```bash
+cd C:\xampp\htdocs\aquatic_plant_advisor
+php artisan serve --host=127.0.0.1 --port=8000
+```
 
-    Policy: TankPolicy, PostPolicy, …
+Mở web:
 
-    Dùng route model binding khi có thể:
+```text
+http://127.0.0.1:8000
+```
 
-    public function show(Tank $tank) { ... } // Laravel tự load theo {tank}
+### Cách 2 (tùy chọn): chạy bằng Apache DocumentRoot trỏ vào /public
+
+Nếu bạn muốn chạy dạng:
+
+```text
+http://127.0.0.1/aquatic_plant_advisor/public
+```
+
+thì đảm bảo Apache đang bật và truy cập đúng path.
+
+---
+
+## 6) Setup & chạy CLIP Service (Python)
+
+> CLIP service dùng để nhận diện cây bằng image retrieval / embedding.
+
+Giả sử thư mục service nằm trong project (ví dụ `clip_service/` hoặc `clip/`).
+Vào đúng folder chứa `requirements.txt` và `main.py` (hoặc `app.py`).
+
+### 6.1 Tạo venv + cài requirements
+
+Ví dụ:
+
+```bash
+cd C:\xampp\htdocs\aquatic_plant_advisor\clip_service
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 6.2 Chạy server
+
+Ví dụ (FastAPI + uvicorn):
+
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+> Lần chạy đầu có thể tải model, chờ tải xong là OK.
+
+---
+
+## 7) Kết nối Laravel ↔ CLIP Service
+
+Mở `.env` (Laravel) và thêm/đảm bảo có URL service:
+
+```env
+CLIP_API_URL=http://127.0.0.1:8001
+```
+
+> Nếu code đang dùng key khác (ví dụ `IMAGE_SERVICE_URL`), hãy sửa theo đúng biến mà project đang đọc.
+
+---
+
+## 8) Tài khoản demo (nếu có seed / SQL dump)
+
+Nếu SQL dump/seed có tạo sẵn tài khoản:
+
+* Admin: `admin@apa.local`
+* Expert: `expert@apa.local`
+* Password (thường): `password`
+
+> Nếu bạn import file SQL của nhóm và thấy email khác thì dùng đúng email trong bảng `users`.
+
+---
+
+## 9) Thứ tự chạy đầy đủ (đúng chuẩn demo)
+
+1. Bật **Apache** + **MySQL** trong XAMPP
+2. Import DB bằng phpMyAdmin **hoặc** chạy migrations
+3. Chạy Laravel:
+
+   ```bash
+   php artisan serve --host=127.0.0.1 --port=8000
+   ```
+4. Chạy CLIP service:
+
+   ```bash
+   uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+   ```
+5. Mở web:
+
+   ```text
+   http://127.0.0.1:8000
+   ```
+
+---
+
+## 10) Troubleshooting nhanh
+
+### Composer lỗi thiếu extension zip/unzip
+
+* Mở `php.ini` (trong XAMPP) và bật:
+
+  * `extension=zip`
+  * `extension=fileinfo`
+* Restart Apache
+* Chạy lại `composer install`
+
+### Lỗi APP_KEY / 500
+
+```bash
+php artisan key:generate
+php artisan config:clear
+php artisan cache:clear
+```
+
+### Laravel không kết nối DB
+
+Kiểm tra `.env`:
+
+* DB_DATABASE đúng tên
+* MySQL đang chạy
+* Username/password đúng
+
+### Không gọi được CLIP service
+
+* Đảm bảo uvicorn đang chạy port 8001
+* Mở thử:
+
+  ```text
+  http://127.0.0.1:8001/docs
+  ```
+* Kiểm tra `.env` Laravel `CLIP_API_URL`
+
+---
+
+## 11) Authors
+
+Group project – Aquatic Plant Advisor (USTH)
+
+```
+
+---
+
+Nếu bạn muốn README **khớp 100% với repo của bạn**, bạn chỉ cần gửi mình 2 thứ (copy/paste là được, không cần zip):
+
+1) **Tên folder thật** của CLIP service trong project (ví dụ: `clip_service` hay `clip-api`), và file chạy là `main.py` hay gì  
+2) File `requirements.txt` của CLIP service (để mình ghi đúng lệnh cài và đúng dependencies)
+
+Mình sẽ chỉnh README cho đúng y chang cấu trúc dự án của bạn.
+```
