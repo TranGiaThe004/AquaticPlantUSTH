@@ -264,3 +264,15 @@ CREATE TABLE `plant_images` (
     ON DELETE CASCADE
     ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+INSERT INTO `users` (`name`, `email`, `password`, `role`, `status`, `created_at`, `updated_at`)
+VALUES (
+  'Admin',
+  'giathe0901@gmail.com',
+  '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+  'admin',
+  'active',
+  NOW(),
+  NOW()
+);

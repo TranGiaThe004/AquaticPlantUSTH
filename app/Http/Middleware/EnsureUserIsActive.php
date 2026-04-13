@@ -12,12 +12,18 @@ class EnsureUserIsActive
     {
         $user = $request->user();
 
-        // Chưa đăng nhập thì để middleware auth xử lý
         if (!$user) {
             return $next($request);
         }
 
-        if (isset($user->status) && $user->status === 'blocked') {
+        if (($user->status ?? 'blocked') !== 'active') {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account has been blocked by admin.',
+                ], 403);
+            }
+
             abort(403, 'Your account has been blocked by admin.');
         }
 

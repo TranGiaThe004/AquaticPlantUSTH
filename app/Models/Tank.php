@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Tank extends Model
 {
@@ -13,6 +16,9 @@ class Tank extends Model
         'user_id',
         'name',
         'size',
+        'length_cm',
+        'width_cm',
+        'height_cm',
         'volume_liters',
         'substrate',
         'light',
@@ -20,27 +26,38 @@ class Tank extends Model
         'description',
     ];
 
-    protected $casts = [
-        'co2' => 'boolean',
-    ];
-
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function tankPlants()
+    public function tankPlants(): HasMany
     {
         return $this->hasMany(TankPlant::class);
     }
 
-    public function waterLogs()
+    public function waterLogs(): HasMany
     {
         return $this->hasMany(WaterLog::class);
     }
 
-    public function questions()
+    public function waterLogReminder(): HasOne
+    {
+        return $this->hasOne(WaterLogReminder::class);
+    }
+
+    public function questions(): HasMany
     {
         return $this->hasMany(Question::class);
+    }
+
+    public function iotDevices(): HasMany
+    {
+        return $this->hasMany(IotDevice::class);
+    }
+
+    public function sensorReadings(): HasMany
+    {
+        return $this->hasMany(SensorReading::class);
     }
 }

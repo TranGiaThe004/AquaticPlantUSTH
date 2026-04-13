@@ -382,75 +382,34 @@ function initSelectPlant() {
 
 // ===== TV4 - Monitoring: Water Logs & Chart =====
 function initWaterLogPage() {
-  // chỉ chạy ở trang có canvas
   const chartCanvas = document.getElementById("waterlogChart");
-  if (!chartCanvas) return;
+  const form = document.getElementById("form-water-log");
 
-  // 1. Chart demo
-  if (typeof Chart !== "undefined") {
+  // không ở trang water logs => thôi
+  if (!chartCanvas && !form) return;
+
+  // ✅ nếu page dùng API thật thì bỏ qua demo
+  if ((chartCanvas && chartCanvas.dataset.live === "1") || (form && form.dataset.live === "1")) {
+    return;
+  }
+
+  // (giữ demo nếu bạn muốn ở page demo cũ)
+  if (typeof Chart !== "undefined" && chartCanvas) {
     const ctx = chartCanvas.getContext("2d");
-
-    // labels & demo data (trùng với bảng phía trên)
-    const labels = [
-      "2025-02-02",
-      "2025-02-05",
-      "2025-02-08"
-    ];
-    const dataPh = [6.7, 6.5, 6.6];
-    const dataTemp = [23.9, 24.1, 24.3];
-    const dataNo3 = [9, 10, 12];
-
     new Chart(ctx, {
       type: "line",
       data: {
-        labels: labels,
+        labels: ["2025-02-02", "2025-02-05", "2025-02-08"],
         datasets: [
-          {
-            label: "pH",
-            data: dataPh,
-            borderWidth: 2,
-            tension: 0.35
-          },
-          {
-            label: "Temp (°C)",
-            data: dataTemp,
-            borderWidth: 2,
-            tension: 0.35
-          },
-          {
-            label: "NO₃ (ppm)",
-            data: dataNo3,
-            borderWidth: 2,
-            tension: 0.35
-          }
+          { label: "pH", data: [6.7, 6.5, 6.6], borderWidth: 2, tension: 0.35 },
+          { label: "Temp (°C)", data: [23.9, 24.1, 24.3], borderWidth: 2, tension: 0.35 },
+          { label: "NO₃ (ppm)", data: [9, 10, 12], borderWidth: 2, tension: 0.35 }
         ]
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false
-        },
-        plugins: {
-          legend: {
-            display: true
-          }
-        },
-        scales: {
-          x: {
-            ticks: { font: { size: 11 } }
-          },
-          y: {
-            ticks: { font: { size: 11 } }
-          }
-        }
-      }
+      options: { responsive: true, maintainAspectRatio: false }
     });
   }
 
-  // 2. Form demo: chặn submit thật, show alert
-  const form = document.getElementById("form-water-log");
   if (form) {
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -458,6 +417,7 @@ function initWaterLogPage() {
     });
   }
 }
+
 
 
 // ===== TV5 - Q&A UI Helpers =====
@@ -688,15 +648,15 @@ function initImageAdminPages() {
   }
 
   /* ---- Admin: plant form submit demo ---- */
-  const plantForm = document.getElementById("plantForm");
-  if (plantForm) {
-    plantForm.addEventListener("submit", e => {
-      e.preventDefault();
-      alert("Demo only: this will call the API to create/update a plant.");
-    });
-  }
+//   const plantForm = document.getElementById("plantForm");
+//   if (plantForm) {
+//     plantForm.addEventListener("submit", e => {
+//       e.preventDefault();
+//       alert("Demo only: this will call the API to create/update a plant.");
+//     });
+//   }
+// }
 }
-
 
 function initCreateTankButton() {
   const btn = document.getElementById("btn-create-tank");

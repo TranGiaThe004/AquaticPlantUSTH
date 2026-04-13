@@ -12,9 +12,9 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('user_id')
-                  ->constrained()
-                  ->cascadeOnDelete()
-                  ->cascadeOnUpdate();
+                  ->constrained()           // Mặc định tham chiếu tới bảng users, cột id (foreign key users.id)
+                  ->cascadeOnDelete()       // Nếu user bị xóa thì tự động xóa luôn các tank của user đó
+                  ->cascadeOnUpdate();      // Nếu users.id đổi (hiếm) thì cập nhật user_id tương ứng (cascade)
 
             $table->string('name');
             $table->string('size', 50)->nullable();

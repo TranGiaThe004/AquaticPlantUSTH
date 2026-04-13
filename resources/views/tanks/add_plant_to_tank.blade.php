@@ -8,11 +8,12 @@
   <section class="section">
     <h1 class="section-title">Add plant to tank</h1>
     <p class="section-subtitle">
-      Tank: <strong>60P Iwagumi</strong>. Pick a plant from the library, then set the planting date and note.
+      Pick a plant from the library, then set the planting date and note.
     </p>
 
+    <div id="page-alert" class="alert alert-danger" style="display:none; margin-bottom:12px;"></div>
+
     <div class="grid-2" style="grid-template-columns: 2fr 1.3fr;">
-      <!-- Library list -->
       <section class="card">
         <div class="card-header card-header-inline">
           <div>
@@ -33,34 +34,13 @@
               <th>Actions</th>
             </tr>
             </thead>
-            <tbody>
-            <tr data-plant-name="Micranthemum 'Monte Carlo'">
-              <td>Micranthemum 'Monte Carlo'</td>
-              <td><span class="badge badge-medium">Medium</span></td>
-              <td><span class="badge badge-light-medium">Medium</span></td>
-              <td>6.0 – 7.2</td>
-              <td><button type="button" class="btn btn-xs btn-secondary select-plant">Select</button></td>
-            </tr>
-            <tr data-plant-name="Hemianthus callitrichoides 'Cuba'">
-              <td>Hemianthus callitrichoides 'Cuba'</td>
-              <td><span class="badge badge-hard">Hard</span></td>
-              <td><span class="badge badge-light-high">High</span></td>
-              <td>5.5 – 7.0</td>
-              <td><button type="button" class="btn btn-xs btn-secondary select-plant">Select</button></td>
-            </tr>
-            <tr data-plant-name="Anubias nana petite">
-              <td>Anubias nana petite</td>
-              <td><span class="badge badge-easy">Easy</span></td>
-              <td><span class="badge badge-light-low">Low</span></td>
-              <td>6.0 – 7.5</td>
-              <td><button type="button" class="btn btn-xs btn-secondary select-plant">Select</button></td>
-            </tr>
+            <tbody id="plant-tbody">
+              <tr><td colspan="5" style="color:#6b7280;">Loading...</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- Placement form -->
       <section class="card">
         <h2 class="card-title">Plant placement</h2>
         <p class="card-subtitle">
@@ -70,9 +50,15 @@
         <div class="metric-item" style="margin-bottom:10px;">
           <div class="metric-label">Selected plant</div>
           <div id="selected-plant" class="metric-value" style="font-size:16px;">None selected</div>
+          <div id="restore-hint" style="display:none;margin-top:6px;color:#f59e0b;font-size:13px;">
+            This plant was previously removed from this tank. It will be restored.
+          </div>
         </div>
 
-        <form>
+        <form id="attach-form">
+          @csrf
+          <input type="hidden" id="selected-plant-id" value="">
+
           <div class="form-group">
             <label for="planted-at">Planted at</label>
             <input type="date" id="planted-at" class="form-control">
@@ -90,11 +76,8 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Add to tank</button>
-            <button type="button" class="btn btn-secondary"
-                    onclick="window.location.href='{{ url('/tanks/1') }}'">
-              Cancel
-            </button>
+            <button id="btn-submit" type="submit" class="btn btn-primary">Add to tank</button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel">Cancel</button>
           </div>
         </form>
       </section>
@@ -102,27 +85,200 @@
   </section>
 
   <script>
-    // search filter in plant library
-    const plantSearch = document.getElementById('plant-search');
-    const plantTableBody = document.querySelector('#plant-table tbody');
+    const CSRF = @json(csrf_token());
+    const alertBox = document.getElementById('page-alert');
 
-    if (plantSearch) {
-      plantSearch.addEventListener('input', function () {
-        const term = this.value.toLowerCase();
-        Array.from(plantTableBody.rows).forEach(row => {
-          const name = row.dataset.plantName.toLowerCase();
-          row.style.display = name.includes(term) ? '' : 'none';
+    const plantTbody = document.getElementById('plant-tbody');
+    const plantSearch = document.getElementById('plant-search');
+
+    const selectedPlantLabel = document.getElementById('selected-plant');
+    const selectedPlantIdInput = document.getElementById('selected-plant-id');
+
+    const restoreHint = document.getElementById('restore-hint');
+    const btnSubmit = document.getElementById('btn-submit');
+
+    let trashedPlantIdSet = new Set();
+
+    function showError(msg) {
+      alertBox.style.display = 'block';
+      alertBox.textContent = msg;
+    }
+    function hideError() {
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
+    }
+
+    function tankIdFromUrl() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('tank_id');
+    }
+
+    function escapeHtml(v) {
+      return String(v ?? '').replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function fmtPhRange(p) {
+      const a = p?.ph_min ?? null;
+      const b = p?.ph_max ?? null;
+      if (a === null && b === null) return '-';
+      if (a !== null && b !== null) return `${a} – ${b}`;
+      return a !== null ? `${a}+` : `≤ ${b}`;
+    }
+
+    async function fetchPlants() {
+      const res = await fetch('/api/plants', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'same-origin',
+      });
+
+      if (res.status === 401) { window.location.href = '/login'; return null; }
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) {
+        showError(json?.message || 'Failed to load plant library.');
+        return null;
+      }
+      return Array.isArray(json.data) ? json.data : [];
+    }
+
+    async function fetchTrashedTankPlants(tankId) {
+      const res = await fetch(`/api/tanks/${tankId}/tank-plants?view=trash`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+      });
+
+      if (res.status === 401) { window.location.href = '/login'; return null; }
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) return [];
+      const list = Array.isArray(json.data?.tank_plants) ? json.data.tank_plants : [];
+      return list;
+    }
+
+    function renderPlantRows(plants) {
+      if (!plants.length) {
+        plantTbody.innerHTML = `<tr><td colspan="5" style="color:#6b7280;">No plants found.</td></tr>`;
+        return;
+      }
+
+      plantTbody.innerHTML = plants.map(p => {
+        const name = p?.name ?? `Plant #${p?.id ?? '-'}`;
+        const diff = p?.difficulty ?? '-';
+        const light = p?.light_level ?? '-';
+        const ph = fmtPhRange(p);
+
+        return `
+          <tr data-plant-id="${p.id}" data-plant-name="${escapeHtml(name)}">
+            <td>${escapeHtml(name)}</td>
+            <td>${escapeHtml(diff)}</td>
+            <td>${escapeHtml(light)}</td>
+            <td>${escapeHtml(ph)}</td>
+            <td><button type="button" class="btn btn-xs btn-secondary btn-select">Select</button></td>
+          </tr>
+        `;
+      }).join('');
+
+      document.querySelectorAll('.btn-select').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = btn.closest('tr');
+          const plantId = Number(row.getAttribute('data-plant-id'));
+          const plantName = row.getAttribute('data-plant-name');
+
+          selectedPlantIdInput.value = String(plantId);
+          selectedPlantLabel.textContent = plantName;
+
+          const isTrashed = trashedPlantIdSet.has(plantId);
+          restoreHint.style.display = isTrashed ? 'block' : 'none';
+          btnSubmit.textContent = isTrashed ? 'Restore to tank' : 'Add to tank';
+
+          hideError();
         });
       });
     }
 
-    // demo: clicking "Select" updates selected plant name
-    const selectedLabel = document.getElementById('selected-plant');
-    document.querySelectorAll('.select-plant').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const row = btn.closest('tr');
-        selectedLabel.textContent = row.dataset.plantName;
+    function bindSearch(plants) {
+      plantSearch.addEventListener('input', () => {
+        const term = plantSearch.value.toLowerCase();
+        const filtered = plants.filter(p => String(p?.name ?? '').toLowerCase().includes(term));
+        renderPlantRows(filtered);
       });
-    });
+    }
+
+    async function attachPlant() {
+      const tankId = tankIdFromUrl();
+      if (!tankId) { showError('Missing tank_id on URL. Example: /tanks/add_plant_to_tank?tank_id=1'); return; }
+
+      const plantId = selectedPlantIdInput.value;
+      if (!plantId) { showError('Please select a plant first.'); return; }
+
+      const plantedAt = document.getElementById('planted-at').value || null;
+      const position = document.getElementById('plant-position').value.trim() || null;
+      const note = document.getElementById('plant-note').value.trim() || null;
+
+      const res = await fetch(`/api/tanks/${tankId}/plants`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-TOKEN': CSRF,
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          plant_id: Number(plantId),
+          planted_at: plantedAt,
+          position: position,
+          note: note,
+        }),
+      });
+
+      if (res.status === 401) { window.location.href = '/login'; return; }
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) {
+        showError(json?.message || 'Attach failed.');
+        return;
+      }
+
+      window.location.href = `{{ route('tanks.tank_detail') }}?tank_id=${tankId}`;
+    }
+
+    async function init() {
+      const tankId = tankIdFromUrl();
+      document.getElementById('btn-cancel').onclick = () => {
+        if (!tankId) window.location.href = `{{ route('tanks.my_tanks') }}`;
+        else window.location.href = `{{ route('tanks.tank_detail') }}?tank_id=${tankId}`;
+      };
+
+      hideError();
+
+      if (tankId) {
+        const trash = await fetchTrashedTankPlants(tankId);
+        trashedPlantIdSet = new Set(trash.map(x => Number(x.plant_id)).filter(x => Number.isFinite(x)));
+      }
+
+      const plants = await fetchPlants();
+      if (!plants) return;
+
+      renderPlantRows(plants);
+      bindSearch(plants);
+
+      document.getElementById('attach-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        hideError();
+        attachPlant();
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 @endsection

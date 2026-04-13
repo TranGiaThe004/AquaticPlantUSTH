@@ -8,8 +8,10 @@
   <section class="section">
     <h1 class="section-title">Q&amp;A – Ask aquascaping experts</h1>
     <p class="section-subtitle">
-      Browse questions from other hobbyists, filter by status and ask your own when you need help with plants or water issues.
+      Browse questions, filter by status and ask your own when you need help with plants or water issues.
     </p>
+
+    <div id="page-alert" class="alert alert-danger" style="display:none; margin-bottom:12px;"></div>
 
     <div class="qa-toolbar">
       <div class="qa-toolbar-left">
@@ -21,11 +23,9 @@
         </select>
       </div>
 
-      <div class="qa-toolbar-right">
-        <button class="btn btn-primary"
-                onclick="window.location.href='{{ route('qa.ask_question') }}'">
-          + Ask a question
-        </button>
+      <div class="qa-toolbar-right" style="display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-secondary" id="btn-my-questions">My questions</button>
+        <button class="btn btn-primary" id="btn-ask">+ Ask a question</button>
       </div>
     </div>
 
@@ -34,7 +34,7 @@
         <table class="table table-qa" id="qa-table">
           <thead>
           <tr>
-            <th style="width: 40%;">Question</th>
+            <th style="width: 44%;">Question</th>
             <th style="width: 14%;">Tank</th>
             <th style="width: 12%;">Status</th>
             <th style="width: 10%;">Answers</th>
@@ -42,96 +42,181 @@
             <th>Created</th>
           </tr>
           </thead>
-          <tbody>
-          <!-- demo rows – sau này sẽ lặp qua danh sách $questions -->
-          <tr data-status="open">
-            <td class="title-cell">
-              <a href="{{ route('qa.question_detail') }}" class="question-title-link">
-                Monte Carlo turning yellow after 3 weeks
-              </a>
-              <div class="question-meta">
-                Tags: carpeting, CO₂, fertilizing
-              </div>
-            </td>
-            <td>60P Iwagumi</td>
-            <td class="status-cell">
-              <span class="badge badge-open">Open</span>
-            </td>
-            <td>3</td>
-            <td>Alex</td>
-            <td>2025-02-08</td>
-          </tr>
-
-          <tr data-status="resolved">
-            <td class="title-cell">
-              <a href="{{ route('qa.question_detail') }}" class="question-title-link">
-                Brown algae on glass in new tank
-              </a>
-              <div class="question-meta">
-                Tags: diatoms, new tank, algae
-              </div>
-            </td>
-            <td>Nano Shrimp Tank</td>
-            <td class="status-cell">
-              <span class="badge badge-resolved">Resolved</span>
-            </td>
-            <td>4</td>
-            <td>Huy</td>
-            <td>2025-01-28</td>
-          </tr>
-
-          <tr data-status="open">
-            <td class="title-cell">
-              <a href="{{ route('qa.question_detail') }}" class="question-title-link">
-                Is my CO₂ level safe for shrimp?
-              </a>
-              <div class="question-meta">
-                Tags: CO₂, livestock safety
-              </div>
-            </td>
-            <td>Shrimp jungle</td>
-            <td class="status-cell">
-              <span class="badge badge-open">Open</span>
-            </td>
-            <td>1</td>
-            <td>Minh</td>
-            <td>2025-02-05</td>
-          </tr>
+          <tbody id="qa-tbody">
+            <tr><td colspan="6" style="color:#6b7280;">Loading...</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <p class="page-subtitle" style="margin-top: 10px;">
-      Tip: When you create a tank in <strong>My Tanks</strong>, you can attach it to your question
-      so experts see its setup and water history.
-    </p>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+      <div id="qa-meta" class="page-subtitle"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-secondary btn-xs" id="btn-prev">Prev</button>
+        <button class="btn btn-secondary btn-xs" id="btn-next">Next</button>
+      </div>
+    </div>
   </section>
 
   <script>
-    // client-side search + filter demo
-    const qaSearch = document.getElementById('qa-search');
-    const qaFilter = document.getElementById('qa-status-filter');
-    const qaRows   = document.querySelectorAll('#qa-table tbody tr');
+    const CSRF = @json(csrf_token());
+    const alertBox = document.getElementById('page-alert');
 
-    function applyQaFilter() {
-      const term   = qaSearch.value.toLowerCase();
-      const status = qaFilter.value;
+    const qSearch = document.getElementById('qa-search');
+    const qStatus = document.getElementById('qa-status-filter');
+    const tbody = document.getElementById('qa-tbody');
+    const meta = document.getElementById('qa-meta');
 
-      qaRows.forEach(row => {
-        const title     = row.querySelector('.title-cell').textContent.toLowerCase();
-        const rowStatus = row.dataset.status;
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
 
-        const matchText   = title.includes(term);
-        const matchStatus = (status === 'all') || (status === rowStatus);
+    let state = { q: '', status: 'all', page: 1, per_page: 10, last_page: 1, total: 0 };
 
-        row.style.display = (matchText && matchStatus) ? '' : 'none';
+    function showError(msg) {
+      alertBox.style.display = 'block';
+      alertBox.textContent = msg;
+    }
+    function hideError() {
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
+    }
+
+    function escapeHtml(v) {
+      return String(v ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '-';
+      return String(iso).slice(0, 10);
+    }
+
+    function badgeStatus(status) {
+      if (status === 'resolved') return `<span class="badge badge-resolved">Resolved</span>`;
+      return `<span class="badge badge-open">Open</span>`;
+    }
+
+    async function fetchQuestions() {
+      const params = new URLSearchParams();
+      if (state.q) params.set('q', state.q);
+      if (state.status) params.set('status', state.status);
+      params.set('page', String(state.page));
+      params.set('per_page', String(state.per_page));
+
+      const res = await fetch(`/api/questions?${params.toString()}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
       });
+
+      if (res.status === 401) { window.location.href = '/login'; return null; }
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) {
+        showError(json?.message || 'Failed to load questions.');
+        return null;
+      }
+      return json.data;
     }
 
-    if (qaSearch && qaFilter) {
-      qaSearch.addEventListener('input', applyQaFilter);
-      qaFilter.addEventListener('change', applyQaFilter);
+    function renderRows(items) {
+      if (!items || !items.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:#6b7280;">No questions found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = items.map(it => {
+        const tankName = it?.tank?.name ?? '-';
+        const askedBy = it?.user?.name ?? '-';
+        const title = it?.title ?? '(no title)';
+        const status = it?.status ?? 'open';
+        const answersCount = it?.answers_count ?? 0;
+        const created = fmtDate(it?.created_at);
+
+        const bestMark = it?.has_best_answer ? `<span class="badge badge-best" style="margin-left:8px;">Best</span>` : '';
+
+        const href = `{{ route('qa.question_detail') }}?question_id=${encodeURIComponent(it.id)}`;
+
+        return `
+          <tr>
+            <td class="title-cell">
+              <a href="${href}" class="question-title-link">${escapeHtml(title)}</a>
+              <div class="question-meta">
+                ${escapeHtml((it?.content ?? '').slice(0, 110))}${(it?.content ?? '').length > 110 ? '…' : ''} ${bestMark}
+              </div>
+            </td>
+            <td>${escapeHtml(tankName)}</td>
+            <td class="status-cell">${badgeStatus(status)}</td>
+            <td>${escapeHtml(answersCount)}</td>
+            <td>${escapeHtml(askedBy)}</td>
+            <td>${escapeHtml(created)}</td>
+          </tr>
+        `;
+      }).join('');
     }
+
+    function renderMeta(m) {
+      state.last_page = m?.last_page ?? 1;
+      state.total = m?.total ?? 0;
+      meta.textContent = `Page ${m?.current_page ?? state.page} / ${state.last_page} • Total: ${state.total}`;
+      btnPrev.disabled = state.page <= 1;
+      btnNext.disabled = state.page >= state.last_page;
+    }
+
+    async function load() {
+      hideError();
+      tbody.innerHTML = `<tr><td colspan="6" style="color:#6b7280;">Loading...</td></tr>`;
+
+      const data = await fetchQuestions();
+      if (!data) return;
+
+      renderRows(data.items || []);
+      renderMeta(data.meta || {});
+    }
+
+    let tmr = null;
+    function scheduleLoad(resetPage = false) {
+      if (resetPage) state.page = 1;
+      clearTimeout(tmr);
+      tmr = setTimeout(load, 250);
+    }
+
+    document.getElementById('btn-ask').onclick = () => {
+      window.location.href = `{{ route('qa.ask_question') }}`;
+    };
+
+    document.getElementById('btn-my-questions').onclick = () => {
+      window.location.href = `{{ route('qa.my_questions') }}`;
+    };
+
+    qSearch.addEventListener('input', () => {
+      state.q = qSearch.value.trim();
+      scheduleLoad(true);
+    });
+
+    qStatus.addEventListener('change', () => {
+      state.status = qStatus.value;
+      scheduleLoad(true);
+    });
+
+    btnPrev.addEventListener('click', () => {
+      if (state.page > 1) {
+        state.page--;
+        load();
+      }
+    });
+
+    btnNext.addEventListener('click', () => {
+      if (state.page < state.last_page) {
+        state.page++;
+        load();
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', load);
   </script>
 @endsection

@@ -19,26 +19,32 @@
     <section class="grid-4">
       <article class="card">
         <div class="card-title">Total users</div>
-        <div class="card-metric">234</div>
-        <p class="card-subtitle">including 6 admins &amp; 14 experts</p>
+        <div class="card-metric">{{ number_format($stats['total_users'] ?? 0) }}</div>
+        <p class="card-subtitle">
+          including {{ number_format($stats['admin_count'] ?? 0) }} admins &amp; {{ number_format($stats['expert_count'] ?? 0) }} experts
+        </p>
       </article>
 
       <article class="card">
         <div class="card-title">Active tanks</div>
-        <div class="card-metric">87</div>
+        <div class="card-metric">{{ number_format($stats['active_tanks'] ?? 0) }}</div>
         <p class="card-subtitle">tanks with logs in the last 30 days</p>
       </article>
 
       <article class="card">
         <div class="card-title">Questions</div>
-        <div class="card-metric">142</div>
-        <p class="card-subtitle">23 open, 119 resolved</p>
+        <div class="card-metric">{{ number_format($stats['questions_total'] ?? 0) }}</div>
+        <p class="card-subtitle">
+          {{ number_format($stats['questions_open'] ?? 0) }} open, {{ number_format($stats['questions_resolved'] ?? 0) }} resolved
+        </p>
       </article>
 
       <article class="card">
         <div class="card-title">Community posts</div>
-        <div class="card-metric">96</div>
-        <p class="card-subtitle">4 pending review / flagged</p>
+        <div class="card-metric">{{ number_format($stats['posts_total'] ?? 0) }}</div>
+        <p class="card-subtitle">
+          {{ number_format($stats['posts_pending_or_flagged'] ?? 0) }} pending review / flagged
+        </p>
       </article>
     </section>
 
@@ -67,24 +73,32 @@
             </tr>
             </thead>
             <tbody>
-            <tr>
-              <td>New Monte Carlo turning yellow</td>
-              <td>Alex</td>
-              <td><span class="badge badge-open">Open</span></td>
-              <td>1</td>
-            </tr>
-            <tr>
-              <td>Is my CO₂ too high for shrimp?</td>
-              <td>Huy</td>
-              <td><span class="badge badge-open">Open</span></td>
-              <td>0</td>
-            </tr>
-            <tr>
-              <td>[Flagged] Algae treatment advice</td>
-              <td>Guest123</td>
-              <td><span class="badge badge-resolved">Flagged</span></td>
-              <td>4</td>
-            </tr>
+            @forelse($questionsNeedingAttention as $q)
+              <tr>
+                <td>
+                  <a href="{{ url('/admin/qa/' . $q->id) }}" class="question-title-link">
+                    {{ $q->title }}
+                  </a>
+                </td>
+                <td>{{ $q->user?->name ?? 'Unknown' }}</td>
+                <td>
+                  @if($q->status === 'open')
+                    <span class="badge badge-open">Open</span>
+                  @elseif($q->status === 'resolved')
+                    <span class="badge badge-resolved">Resolved</span>
+                  @else
+                    <span class="badge badge-soft">{{ $q->status }}</span>
+                  @endif
+                </td>
+                <td>{{ number_format($q->answers_count ?? 0) }}</td>
+              </tr>
+            @empty
+              <tr>
+                <td colspan="4" class="text-center" style="padding:14px;">
+                  No questions found.
+                </td>
+              </tr>
+            @endforelse
             </tbody>
           </table>
         </div>
@@ -113,18 +127,32 @@
             </tr>
             </thead>
             <tbody>
-            <tr>
-              <td>Iwagumi layout with dragon stone</td>
-              <td>Phong</td>
-              <td>Off-topic</td>
-              <td>2</td>
-            </tr>
-            <tr>
-              <td>CO₂ DIY guide</td>
-              <td>Anh Tuan</td>
-              <td>Safety concern</td>
-              <td>1</td>
-            </tr>
+            @forelse($postsFlagged as $p)
+              <tr>
+                <td>
+                  <a href="{{ url('/admin/community-posts/' . $p->id) }}" class="question-title-link">
+                    {{ $p->title }}
+                  </a>
+                </td>
+                <td>{{ $p->user?->name ?? 'Unknown' }}</td>
+                <td>
+                  @if($p->status === 'pending')
+                    Pending review
+                  @elseif($p->status === 'rejected')
+                    Rejected
+                  @else
+                    {{ $p->status }}
+                  @endif
+                </td>
+                <td>0</td>
+              </tr>
+            @empty
+              <tr>
+                <td colspan="4" class="text-center" style="padding:14px;">
+                  No flagged / pending posts.
+                </td>
+              </tr>
+            @endforelse
             </tbody>
           </table>
         </div>

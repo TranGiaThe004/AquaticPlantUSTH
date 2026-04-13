@@ -2,6 +2,7 @@
 @extends('layouts.site')
 
 @section('title', 'Community posts')
+@section('nav_com_active', 'active')
 
 @section('content')
   <section class="section">
@@ -11,7 +12,8 @@
       Share your own experience to inspire the community.
     </p>
 
-    <!-- Toolbar -->
+    <div id="page-alert" class="alert alert-danger" style="display:none; margin:12px 0;"></div>
+
     <div class="com-toolbar">
       <div class="com-toolbar-left">
         <input id="com-search" class="form-control com-search" placeholder="Search posts…">
@@ -23,87 +25,146 @@
         </select>
       </div>
       <div class="com-toolbar-right">
-        <button class="btn btn-primary"
-                onclick="location.href='{{ route('community.create_post') }}'">
-          + Write a post
-        </button>
+        <button class="btn btn-primary" id="btn-write">+ Write a post</button>
+        <button class="btn btn-secondary" id="btn-my-posts" style="display:none;">My posts</button>
       </div>
     </div>
 
-    <!-- Cards -->
     <section class="posts-grid" id="posts-grid">
-      <!-- Demo card 1 -->
-      <article class="post-card" data-category="diary">
-        <div class="post-card-title">
-          <a href="{{ route('community.post_detail') }}">My first Iwagumi – 90 days journal</a>
-        </div>
-        <div class="post-card-meta">
-          by <strong>Alex</strong> • Tank: 60P Iwagumi • 2025-02-06
-        </div>
-        <p class="post-card-excerpt">
-          From bare glass box to fully grown carpet – lessons learned about CO₂, trimming and algae control…
-        </p>
-        <div class="post-card-tags">
-          <span class="tag-pill">tank diary</span>
-          <span class="tag-pill">carpeting</span>
-        </div>
-      </article>
-
-      <!-- Demo card 2 -->
-      <article class="post-card" data-category="guides">
-        <div class="post-card-title">
-          <a href="{{ route('community.post_detail') }}">Beginner guide to balanced fertilizing</a>
-        </div>
-        <div class="post-card-meta">
-          by <strong>Huy</strong> • Expert • 2025-01-30
-        </div>
-        <p class="post-card-excerpt">
-          A simple routine to keep plants fed without triggering algae – with example schedules for low and high-tech tanks.
-        </p>
-        <div class="post-card-tags">
-          <span class="tag-pill">guide</span>
-          <span class="tag-pill">fertilizing</span>
-        </div>
-      </article>
-
-      <!-- Demo card 3 -->
-      <article class="post-card" data-category="algae">
-        <div class="post-card-title">
-          <a href="{{ route('community.post_detail') }}">How I beat green spot algae on slow growers</a>
-        </div>
-        <div class="post-card-meta">
-          by <strong>Lan</strong> • 2025-01-20
-        </div>
-        <p class="post-card-excerpt">
-          Adjusting phosphate levels, light intensity and cleaning routine to keep Anubias leaves clean and healthy.
-        </p>
-        <div class="post-card-tags">
-          <span class="tag-pill">algae</span>
-          <span class="tag-pill">anubias</span>
-        </div>
-      </article>
+      <div style="color:#6b7280;">Loading...</div>
     </section>
   </section>
 
   <script>
-    const comSearch   = document.getElementById('com-search');
-    const comCategory = document.getElementById('com-category');
-    const comCards    = document.querySelectorAll('#posts-grid .post-card');
+    const CSRF = @json(csrf_token());
+    const alertBox = document.getElementById('page-alert');
 
-    function applyComFilter() {
-      const term = comSearch.value.toLowerCase();
-      const cat  = comCategory.value;
+    function showError(msg) { alertBox.style.display='block'; alertBox.textContent=msg; }
+    function hideError() { alertBox.style.display='none'; alertBox.textContent=''; }
 
-      comCards.forEach(card => {
-        const text = card.textContent.toLowerCase();
-        const cCat = card.dataset.category || 'all';
-        const matchText = text.includes(term);
-        const matchCat  = (cat === 'all') || (cat === cCat);
-        card.style.display = (matchText && matchCat) ? '' : 'none';
-      });
+    function escapeHtml(v) {
+      return String(v ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
     }
 
-    comSearch.addEventListener('input', applyComFilter);
-    comCategory.addEventListener('change', applyComFilter);
+    function fmtDate(iso) {
+      if (!iso) return '-';
+      return String(iso).replace('T',' ').slice(0, 10);
+    }
+
+    async function apiMe() {
+      const res = await fetch('/api/me', {
+        method: 'GET',
+        headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' },
+        credentials: 'same-origin',
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) return null;
+      return json.data;
+    }
+
+    async function fetchPosts(q) {
+      const url = new URL('/api/posts', window.location.origin);
+      if (q) url.searchParams.set('q', q);
+      url.searchParams.set('limit', '24');
+
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest' },
+        credentials: 'same-origin',
+      });
+
+      if (res.status === 401) return { needLogin: true };
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.success !== true) {
+        return { error: json?.message || 'Failed to load posts.' };
+      }
+      return { items: json.data?.items || [] };
+    }
+
+    function excerpt(text, n=140) {
+      const t = String(text ?? '').trim();
+      if (t.length <= n) return t;
+      return t.slice(0, n) + '…';
+    }
+
+    function renderPosts(items) {
+      const grid = document.getElementById('posts-grid');
+      if (!items.length) {
+        grid.innerHTML = `<div style="color:#6b7280;">No posts found.</div>`;
+        return;
+      }
+
+      grid.innerHTML = items.map(p => {
+        const title = escapeHtml(p.title);
+        const by = escapeHtml(p.user?.name || 'User');
+        const date = escapeHtml(fmtDate(p.created_at));
+        const cc = Number(p.comments_count ?? 0);
+
+        const link = `{{ route('community.post_detail') }}?post_id=${encodeURIComponent(p.id)}`;
+        const img = p.image_path ? `<div class="post-cover" style="margin-top:10px;"><img src="${escapeHtml(p.image_path)}" alt="Post image"></div>` : '';
+
+        return `
+          <article class="post-card">
+            <div class="post-card-title">
+              <a href="${link}">${title}</a>
+            </div>
+            <div class="post-card-meta">
+              by <strong>${by}</strong> • ${date} • ${cc} comment(s)
+            </div>
+            <p class="post-card-excerpt">${escapeHtml(excerpt(p.content))}</p>
+            ${img}
+          </article>
+        `;
+      }).join('');
+    }
+
+    let me = null;
+    let debounceTimer = null;
+
+    async function load() {
+      hideError();
+
+      me = await apiMe();
+      const btnMy = document.getElementById('btn-my-posts');
+      if (btnMy) btnMy.style.display = me ? '' : 'none';
+
+      const q = document.getElementById('com-search').value.trim();
+      const result = await fetchPosts(q);
+
+      if (result.needLogin) { window.location.href = '/login'; return; }
+      if (result.error) { showError(result.error); return; }
+
+      renderPosts(result.items);
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('btn-write').addEventListener('click', async () => {
+        const m = await apiMe();
+        if (!m) { window.location.href = '/login'; return; }
+        window.location.href = `{{ route('community.create_post') }}`;
+      });
+
+      document.getElementById('btn-my-posts').addEventListener('click', () => {
+        window.location.href = `{{ route('community.my_posts') }}`;
+      });
+
+      document.getElementById('com-search').addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(load, 250);
+      });
+
+      document.getElementById('com-category').addEventListener('change', () => {
+        // category is UI-only for now (no DB field). Kept for future.
+        load();
+      });
+
+      await load();
+    });
   </script>
 @endsection
